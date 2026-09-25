@@ -82,6 +82,38 @@ h3 {
   align-items: center;
 }
 
+.account-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-width: 360px;
+}
+
+.account-identity {
+  max-width: 150px;
+  overflow: hidden;
+  color: #374151;
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-message {
+  flex-basis: 100%;
+  color: #6b7280;
+  font-size: 0.68rem;
+  line-height: 1.35;
+  text-align: right;
+}
+
+.google-signin-button {
+  min-width: 190px;
+  min-height: 40px;
+}
+
 .shop-mini-button {
   border: 1px solid rgba(17, 24, 39, 0.08);
   background: rgba(255, 255, 255, 0.72);
@@ -143,6 +175,69 @@ h3 {
   backdrop-filter: blur(8px);
   padding: 24px;
   box-shadow: 0 18px 40px rgba(17, 24, 39, 0.06);
+}
+
+.login-panel {
+  display: grid;
+  align-content: center;
+  gap: 42px;
+  width: min(100%, 620px);
+  min-height: calc(100vh - 64px);
+  margin: 0 auto;
+  padding: 48px;
+  animation: riseIn 0.55s ease-out;
+}
+
+.login-brand,
+.login-copy,
+.login-actions {
+  display: grid;
+  justify-items: start;
+}
+
+.login-brand {
+  gap: 4px;
+}
+
+.login-brand .brand-title {
+  font-size: 2.4rem;
+}
+
+.login-copy {
+  gap: 12px;
+  max-width: 460px;
+}
+
+.login-copy h2 {
+  font-size: 2rem;
+  line-height: 1.15;
+}
+
+.login-copy > p:last-child {
+  margin: 0;
+  color: #4b5563;
+  line-height: 1.6;
+}
+
+.login-actions {
+  gap: 12px;
+}
+
+.login-status,
+.login-note {
+  max-width: 360px;
+  margin: 0;
+  color: #6b7280;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.login-google-button {
+  min-height: 44px;
+}
+
+.guest-button {
+  min-height: 44px;
 }
 
 .hero-panel {
@@ -669,6 +764,20 @@ h3 {
     padding: 18px 14px;
   }
 
+  .login-panel {
+    min-height: calc(100vh - 36px);
+    gap: 34px;
+    padding: 28px 22px;
+  }
+
+  .login-brand .brand-title {
+    font-size: 2rem;
+  }
+
+  .login-copy h2 {
+    font-size: 1.7rem;
+  }
+
   .topbar,
   .game-toolbar,
   .panel-header {
@@ -681,5 +790,19 @@ h3 {
   .career-summary {
     grid-template-columns: 1fr;
     width: 100%;
+  }
+
+  .header-profile {
+    display: flex;
+    align-items: stretch;
+  }
+
+  .account-controls {
+    justify-content: flex-start;
+    max-width: none;
+  }
+
+  .account-message {
+    text-align: left;
   }
 }

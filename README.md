@@ -1,16 +1,15 @@
-# React + Vite
+# Tic Tac Toe
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+React + Vite game with optional Google sign-in and MongoDB cloud saves.
 
-Currently, two official plugins are available:
+## Setup
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+1. Install dependencies with `npm install`.
+2. Copy `.env.example` to `.env` and set `GOOGLE_CLIENT_ID` and a random `SESSION_SECRET` of at least 32 characters.
+3. Ensure the ignored `atlas-credentials.env` file contains a complete MongoDB connection URI in `MONGODB_URI`. Set `MONGODB_DB` in `.env` if you want a database name other than `tic_tac_toe`.
+4. In Google Cloud Console, create an OAuth 2.0 Client ID of type Web application and add `http://localhost:5173` and `http://localhost:5174` as authorized JavaScript origins for local development.
+5. Run `npm run dev`. Vite serves the app on port 5173 and proxies `/api` to the Express API on port 3001.
 
-## React Compiler
+The first Google sign-in creates the MongoDB player document using the current guest profile. Later sign-ins load the account profile; profile updates are saved automatically. Player documents are keyed by Google's verified account ID. The app continues to support guest play with local device saves when cloud configuration is unavailable.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+For production, build with `npm run build`, configure the same environment variables on the server, and run `npm start`. The Express server serves `dist` and the API from the same origin. Use HTTPS in production so the session cookie is secure.

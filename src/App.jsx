@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useState } from 'react'
+import { useEffect, useReducer, useRef, useState } from 'react'
 import './App.css'
 
 const STORAGE_KEY = 'react-hq-ttt-save-v1'
@@ -510,7 +510,7 @@ function loadSavedState() {
 
   if (!stored) {
     return {
-      screen: 'home',
+      screen: 'login',
       profile: getDefaultProfile(),
       game: createGameState('ai'),
       profilePanelOpen: false,
@@ -520,14 +520,14 @@ function loadSavedState() {
   try {
     const parsed = JSON.parse(stored)
     return {
-      screen: 'home',
+      screen: 'login',
       profile: normalizeProfile(parsed),
       game: createGameState('ai'),
       profilePanelOpen: false,
     }
   } catch {
     return {
-      screen: 'home',
+      screen: 'login',
       profile: getDefaultProfile(),
       game: createGameState('ai'),
       profilePanelOpen: false,
@@ -604,6 +604,17 @@ function applyMatchResult(profile, winner, isDraw) {
 
 function appReducer(state, action) {
   switch (action.type) {
+    case 'LOAD_PROFILE':
+      return {
+        ...state,
+        screen: 'home',
+        profile: normalizeProfile(action.profile),
+        profilePanelOpen: false,
+      }
+
+    case 'CONTINUE_AS_GUEST':
+      return { ...state, screen: 'home', profilePanelOpen: false }
+
     case 'SET_SCREEN':
       return { ...state, screen: action.screen, profilePanelOpen: false }
 
@@ -774,10 +785,170 @@ function appReducer(state, action) {
 function App() {
   const [state, dispatch] = useReducer(appReducer, undefined, loadSavedState)
   const [narratingMission, setNarratingMission] = useState(null)
+  const [account, setAccount] = useState(null)
+  const [accountReady, setAccountReady] = useState(false)
+  const [googleClientId, setGoogleClientId] = useState('')
+  const [cloudReady, setCloudReady] = useState(false)
+  const [accountMessage, setAccountMessage] = useState('Checking account...')
+  const loginGoogleButtonRef = useRef(null)
+  const headerGoogleButtonRef = useRef(null)
+  const profileRef = useRef(state.profile)
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state.profile))
   }, [state.profile])
+
+  useEffect(() => {
+    profileRef.current = state.profile
+  }, [state.profile])
+
+  useEffect(() => {
+    let active = true
+
+    const restoreAccount = async () => {
+      try {
+        const [configResponse, playerResponse] = await Promise.all([
+          fetch('/api/config'),
+          fetch('/api/auth/session', { credentials: 'same-origin' }),
+        ])
+        if (!configResponse.ok) {
+          throw new Error('Account service is unavailable.')
+        }
+
+        const config = await configResponse.json()
+        const playerData = playerResponse.ok ? await playerResponse.json() : null
+        if (!active) {
+          return
+        }
+
+        setGoogleClientId(config.googleClientId || '')
+        setCloudReady(Boolean(config.cloudReady))
+        if (playerData?.authenticated) {
+          dispatch({ type: 'LOAD_PROFILE', profile: playerData.profile })
+          setAccount(playerData.player)
+          setAccountMessage('Cloud profile connected')
+        } else if (!config.cloudReady) {
+          setAccountMessage('Google and MongoDB server settings are needed for cloud saves.')
+        } else if (!playerResponse.ok) {
+          setAccountMessage('Could not load cloud profile. Guest play is still available.')
+        } else {
+          setAccountMessage('Sign in with Google to save your profile to the cloud.')
+        }
+      } catch {
+        if (active) {
+          setAccountMessage('Cloud service unavailable. Guest data stays on this device.')
+        }
+      } finally {
+        if (active) {
+          setAccountReady(true)
+        }
+      }
+    }
+
+    restoreAccount()
+    return () => {
+      active = false
+    }
+  }, [])
+
+  useEffect(() => {
+    const googleButtonRef = state.screen === 'login' ? loginGoogleButtonRef : headerGoogleButtonRef
+    if (!accountReady || !cloudReady || !googleClientId || account || !googleButtonRef.current) {
+      return undefined
+    }
+
+    const onGoogleScriptLoad = () => {
+      if (!window.google?.accounts?.id || !googleButtonRef.current) {
+        setAccountMessage('Google sign-in could not be loaded.')
+        return
+      }
+
+      window.google.accounts.id.initialize({
+        client_id: googleClientId,
+        callback: async ({ credential }) => {
+          setAccountMessage('Signing in...')
+          try {
+            const response = await fetch('/api/auth/google', {
+              method: 'POST',
+              credentials: 'same-origin',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ credential, guestProfile: profileRef.current }),
+            })
+            const result = await response.json()
+            if (!response.ok) {
+              throw new Error(result.error || 'Google sign-in failed.')
+            }
+
+            dispatch({ type: 'LOAD_PROFILE', profile: result.profile })
+            setAccount(result.player)
+            setAccountMessage('Cloud profile connected')
+          } catch (error) {
+            setAccountMessage(error.message || 'Google sign-in failed.')
+          }
+        },
+      })
+      window.google.accounts.id.renderButton(googleButtonRef.current, {
+        theme: 'outline',
+        size: 'large',
+        shape: 'pill',
+        text: 'signin_with',
+        width: 190,
+      })
+    }
+
+    const script = document.createElement('script')
+    script.src = 'https://accounts.google.com/gsi/client'
+    script.async = true
+    script.defer = true
+    script.onload = onGoogleScriptLoad
+    script.onerror = () => setAccountMessage('Google sign-in could not be loaded.')
+    document.head.appendChild(script)
+
+    return () => {
+      script.onload = null
+      script.remove()
+    }
+  }, [account, accountReady, cloudReady, googleClientId, state.screen])
+
+  useEffect(() => {
+    if (!account || !accountReady) {
+      return undefined
+    }
+
+    const timer = window.setTimeout(async () => {
+      try {
+        const response = await fetch('/api/player', {
+          method: 'PUT',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ profile: state.profile }),
+        })
+        if (response.status === 401) {
+          setAccount(null)
+          setAccountMessage('Session expired. Sign in again to resume cloud saves.')
+          return
+        }
+        if (!response.ok) {
+          throw new Error('Cloud save failed.')
+        }
+        setAccountMessage('Saved to cloud')
+      } catch {
+        setAccountMessage('Cloud save unavailable. Changes remain on this device.')
+      }
+    }, 450)
+
+    return () => window.clearTimeout(timer)
+  }, [account, accountReady, state.profile])
+
+  const signOut = async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' })
+    } finally {
+      setAccount(null)
+      setAccountMessage('Signed out. This device profile remains available.')
+      dispatch({ type: 'SET_SCREEN', screen: 'login' })
+    }
+  }
 
   useEffect(() => () => window.speechSynthesis?.cancel(), [])
 
@@ -846,7 +1017,39 @@ function App() {
   return (
     <main className="app-shell" style={{ background: activeBackground.gradient }}>
       <div className="app-window">
-        <header className="topbar">
+        {state.screen === 'login' && (
+          <section className="screen-panel login-panel" aria-labelledby="login-title">
+            <div className="login-brand">
+              <p className="eyebrow">© Ntsika Ngilane @Zaio</p>
+              <h1 className="brand-title">Tic Tac Toe</h1>
+            </div>
+            <div className="login-copy">
+              <p className="eyebrow">Player account</p>
+              <h2 id="login-title">Your next move starts here.</h2>
+              <p>Sign in to load your saved profile and keep your career progress across devices.</p>
+            </div>
+            <div className="login-actions">
+              {!accountReady ? (
+                <p className="login-status" role="status">Checking for a saved account...</p>
+              ) : cloudReady ? (
+                <div className="google-signin-button login-google-button" ref={loginGoogleButtonRef} />
+              ) : (
+                <p className="login-status" role="status">{accountMessage}</p>
+              )}
+              <button
+                type="button"
+                className="action-button guest-button"
+                onClick={() => dispatch({ type: 'CONTINUE_AS_GUEST' })}
+                disabled={!accountReady}
+              >
+                Continue as guest
+              </button>
+              {accountReady && <span className="login-note">Guest progress stays on this device.</span>}
+            </div>
+          </section>
+        )}
+
+        {state.screen !== 'login' && <header className="topbar">
           <div>
             <p className="eyebrow">© Ntsika Ngilane @Zaio</p>
             <h1 className="brand-title">Tic Tac Toe</h1>
@@ -869,8 +1072,21 @@ function App() {
             <button type="button" className="shop-mini-button" onClick={() => dispatch({ type: 'SET_SCREEN', screen: 'shop' })}>
               Shop
             </button>
+            <div className="account-controls">
+              {account ? (
+                <>
+                  <span className="account-identity">{account.name}</span>
+                  <button type="button" className="shop-mini-button" onClick={signOut}>
+                    Sign out
+                  </button>
+                </>
+              ) : accountReady && cloudReady ? (
+                <div className="google-signin-button" ref={headerGoogleButtonRef} />
+              ) : null}
+              <span className="account-message" role="status">{accountMessage}</span>
+            </div>
           </div>
-        </header>
+        </header>}
 
         {state.profilePanelOpen && (
           <section className="screen-panel profile-info-panel">

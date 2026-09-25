@@ -11,6 +11,11 @@ node_modules
 dist
 dist-ssr
 *.local
+.env
+.env.*
+!.env.example
+atlas-credentials.env
+glassy-land-469613-n7-8f2c2d9736c3.json
 
 # Editor directories and files
 .vscode/*
